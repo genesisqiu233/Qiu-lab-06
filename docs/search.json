@@ -1,0 +1,79 @@
+[
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "",
+    "text": "The bfi data contain 25 personality items from 2,800 people, five items per Big Five trait. Each item is answered on a 6-point scale from Very inaccurate to Very accurate.\nThe chosen trait is Neuroticism. The ordered outcome is one Neuroticism item, N4, “Often feel blue.” The predictor is a person’s Extraversion subscale score, the mean of E1 to E5 with E1 and E2 reverse-keyed.\nI predict that as people are more extroverted, they will be less often to feel blue."
+  },
+  {
+    "objectID": "index.html#question-and-predictions",
+    "href": "index.html#question-and-predictions",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "",
+    "text": "The bfi data contain 25 personality items from 2,800 people, five items per Big Five trait. Each item is answered on a 6-point scale from Very inaccurate to Very accurate.\nThe chosen trait is Neuroticism. The ordered outcome is one Neuroticism item, N4, “Often feel blue.” The predictor is a person’s Extraversion subscale score, the mean of E1 to E5 with E1 and E2 reverse-keyed.\nI predict that as people are more extroverted, they will be less often to feel blue."
+  },
+  {
+    "objectID": "index.html#load-and-inspect-the-data",
+    "href": "index.html#load-and-inspect-the-data",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "Load and Inspect the Data",
+    "text": "Load and Inspect the Data"
+  },
+  {
+    "objectID": "index.html#data-preparation",
+    "href": "index.html#data-preparation",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "Data preparation",
+    "text": "Data preparation"
+  },
+  {
+    "objectID": "index.html#the-ordered-outcome",
+    "href": "index.html#the-ordered-outcome",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "The ordered outcome",
+    "text": "The ordered outcome\nCheck that no category is empty or very sparse.\n\n\n# A tibble: 6 × 3\n  N4                        n      p\n  &lt;ord&gt;                 &lt;int&gt;  &lt;dbl&gt;\n1 Very inaccurate         472 0.171 \n2 Moderately inaccurate   655 0.237 \n3 Slightly inaccurate     401 0.145 \n4 Slightly accurate       608 0.220 \n5 Moderately accurate     380 0.137 \n6 Very accurate           248 0.0897\n\n\nEvery category has plenty of responses (the smallest, Very accurate, has 248), so each threshold can be estimated without collapsing categories.\nThis can be displayed graphically:"
+  },
+  {
+    "objectID": "index.html#how-the-predictor-relates-to-the-responses",
+    "href": "index.html#how-the-predictor-relates-to-the-responses",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "How the predictor relates to the responses",
+    "text": "How the predictor relates to the responses\nI can also visualize how the predictor relates to the responses, seeing how each person’s Extraversion score relates to their N4 response. Because many people have the same Extaoversion score and the same N4 response, I use geom_jitter to spread out the overlapping points.\n\n\n\n\n\n\n\n\n\nThe outcome takes only six values. A good model should predict a probability for each of those six categories, not a specific decimal average that is not an option to choose."
+  },
+  {
+    "objectID": "index.html#an-unordered-outcome",
+    "href": "index.html#an-unordered-outcome",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "An unordered outcome",
+    "text": "An unordered outcome\nEach person’s dominant trait (their highest of the five subscale scores) is a set of categories with no built-in order. Being highest on Openness is not “more” than being highest on Agreeableness. An outcome like this requires a baseline-category (multinomial) model, such as nnet::multinom(), rather than clm().\nHere I can see how many people have each trait as their highest."
+  },
+  {
+    "objectID": "index.html#what-the-centred-thresholds-mean",
+    "href": "index.html#what-the-centred-thresholds-mean",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "What the centred thresholds mean",
+    "text": "What the centred thresholds mean\n\n\n\n\n\n\n\n\nCategory\nThreshold above category\nP(Y ≤ j)\nP(Y = j)\n\n\n\n\nVery inaccurate\n−1.72\n0.15\n0.15\n\n\nModerately inaccurate\n−0.41\n0.40\n0.25\n\n\nSlightly inaccurate\n0.23\n0.56\n0.16\n\n\nSlightly accurate\n1.33\n0.79\n0.23\n\n\nModerately accurate\n2.50\n0.92\n0.13\n\n\nVery accurate\n—\n1.00\n0.08\n\n\n\n\n\n\n\nApply plogis() to each threshold to get a cumulative probability, then take differences. For a person of average Extraversion, the most likely response is Moderately inaccurate (0.2457447). Their probability of endorsing the item at all, that is, Slightly accurate or lower, is the probability of Slightly accurate at 79%."
+  },
+  {
+    "objectID": "index.html#b.-comparing-and-interpreting-the-chosen-model",
+    "href": "index.html#b.-comparing-and-interpreting-the-chosen-model",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "4b. Comparing and interpreting the chosen model",
+    "text": "4b. Comparing and interpreting the chosen model\nThe slope, beta = -0.6438764, is on the latent logit scale. A one-point increase in Extraversion moves a person’s latent “sad proneness” as reflected by N4 down by 0.6438764. The middle categories are each about 0.8740554 units wide on that scale, so one point of Extraversion shifts someone by roughly 73.665406% of a category."
+  },
+  {
+    "objectID": "index.html#a.-predicted-category-probabilities",
+    "href": "index.html#a.-predicted-category-probabilities",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "7a. Predicted category probabilities",
+    "text": "7a. Predicted category probabilities\n\n\n\n\n\n\n\n\n\nAt low Extraversion, much of the probability sits in the “accurate” categories. As Extraversion rises, it moves toward Very inaccurate and Moderately inaccurate. At every value of Extraversion, the six probabilities sum to 1, which is why the stack always reaches 100%."
+  },
+  {
+    "objectID": "index.html#b.-coefficient-plot-of-cumulative-odds-ratios",
+    "href": "index.html#b.-coefficient-plot-of-cumulative-odds-ratios",
+    "title": "Ordinal Logistic Regression Assignment",
+    "section": "7b. Coefficient plot of cumulative odds ratios",
+    "text": "7b. Coefficient plot of cumulative odds ratios\nThe plot shows the shared proportional-odds OR alongside the threshold-specific ORs from Section 5, so it also works as a visual check of proportional odds.\n\n\n\n\n\n\n\n\n\nEvery interval sits well below 1 (the dashed line). The threshold-specific estimates also cluster around the shared estimate, which is what proportional odds implies."
+  }
+]
