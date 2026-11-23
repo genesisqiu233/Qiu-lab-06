@@ -41,21 +41,17 @@ I predict that as people are more extroverted, they will be less often to feel b
 ## Load and Inspect the Data
 
 ```{r}
-#| echo: false
 
 data <- read_excel("./bfi.xlsx")
 
 data<- data|>
-  mutate_at(2:26, as.integer)
-
-# Check the data
-#head(data)
+  mutate_at(A1:05, as.integer)
+head(data)
 ```
 
 ## Data preparation
 
 ```{r}
-#| echo: FALSE
 
 # Labels for the six response options, from lowest to highest
 n_levels <- c("Very inaccurate", "Moderately inaccurate", "Slightly inaccurate", "Slightly accurate", "Moderately accurate", "Very accurate")
@@ -69,8 +65,7 @@ keys <- list(
   Openness          = c("O1", "-O2", "O3", "O4", "-O5")
 )
 
-scores<-scoreItems(keys, data, totals = F, min=1, max=6)
-
+scores<-scoreItems(keys, data, totals = F, min = 1, max = 6)
 scores_df<- scores$scores
 
 # Mutate data to include the ordered outcome, an unordered outcome, and the predictor (raw and centred)
@@ -78,44 +73,45 @@ data <- data |>
   select(N4) |>
   bind_cols(as_tibble(scores_df)) |>
   mutate(
-    N4 = factor(N4, levels = 1:6, labels = n_levels, ordered = TRUE),   # The ordered outcome
-    highest = factor(names(keys)[max.col(scores_df, ties.method = "first")]),  # Unordered outcome:highest-scoring trait
+    N4 = factor(N4, levels = 1:6, labels = n_levels, ordered = TRUE),
+    highest = factor(names(keys)[max.col(scores_df, ties.method = "first")]),
     extra = Extraversion
   ) |>
   drop_na(N4, extra, highest) |>
-  mutate(extra_c = extra - mean(extra))  # Centre AFTER dropping missing cases
-
+  mutate(extra_c = extra - mean(extra))
+n_analysed <- nrow(data)
+extra_sd <- sd(data$extra)
 extra_bar <- mean(data$extra)
 ```
 
-# 1. Look at the outcomes first
+All 25 personality items were verified and stored as integers before scoring. Each Big Five subscale was scored using `psych::scoreItems()` as the mean of its five items on the 1–6 scale after reverse-scoring negatively keyed items (with missing item responses within subscales imputed at the item median by default). After removing participants with missing values on the analysis variables, the final analytic sample was **N = `r format(n_analysed, big.mark = ",")`**. Before centring, the mean Extraversion score was **`r sprintf("%.2f", extra_bar)`** (SD = `r sprintf("%.2f", extra_sd)`).
+
+# Examine the outcomes
 
 ## The ordered outcome
 
 ```{r, n4 counts}
-#| echo: FALSE
 
 # Count how many people chose each response option for n4.
 n4_counts <- data |>
   count(N4) |>
-  # p is the proportion of the sample in each category, P(Y = j).
   mutate(p = n / sum(n))
+
+min_cat <- n4_counts |> slice_min(n, n = 1)
+n4_counts |>
+  gt() |>
+  cols_label(
+    N4 = "Response Category",
+    n = "n",
+  ) |>
+  fmt_integer(columns = n) |>
+  fmt_number(columns = p, decimals = 3)
 ```
 
-Check that no category is empty or very sparse.
-
-```{r}
-#| echo: FALSE
-
-n4_counts
-```
-
-Every category has plenty of responses (the smallest, *Very accurate*, has `r min(n4_counts$n)`), so each threshold can be estimated without collapsing categories.
-
-This can be displayed graphically:
+No category is empty or sparse. Every response option is well populated, and the smallest category (`r min_cat$N4`) still contains **`r min_cat$n`** responses (`r sprintf("%.1f%%", 100 * min_cat$p)` of the sample), so all five thresholds can be estimated without collapsing categories.
 
 ```{r, n4 bar graph}
-#| echo: FALSE
+
 #plot the counts
 plot_n4 <- ggplot(n4_counts, aes(x = N4, y = n, fill = N4)) +
   geom_col(width = 0.7) +
@@ -124,86 +120,60 @@ plot_n4 <- ggplot(n4_counts, aes(x = N4, y = n, fill = N4)) +
        x = NULL, y = "People") +
   theme_minimal() +
   theme(legend.position = "none")
-```
-
-```{r}
-#| echo: FALSE
 plot_n4
 ```
 
 ## How the predictor relates to the responses
 
-I can also visualize how the predictor relates to the responses, seeing how each person's Extraversion score relates to their N4 response. Because many people have the same Extaoversion score and the same N4 response, I use *`geom_jitter`* to spread out the overlapping points.
-
 ```{r, jitter plot}
-#| echo: FALSE
 
 plot_jitter<-ggplot(data, aes(extra, as.numeric(N4), colour = N4)) +
   geom_jitter(width = 0.05, height = 0.15, alpha = 0.25, size = 1.4) +
   scale_y_continuous(breaks = 1:6, labels = n_levels) +
-  labs(title = "Higher Extraversion, less often feel blue, with lots of overlap",
+  labs(title = "Higher Extraversion, less likely to endorse 'often feel blue', with overlap",
        x = "Extraversion (subscale mean, 1-6)", y = NULL) +
   theme_minimal() +
   theme(legend.position = "none")
-```
-
-```{r}
-#| echo: FALSE
-
 plot_jitter
 ```
 
-The outcome takes only six values. A good model should predict a probability for each of those six categories, not a specific decimal average that is not an option to choose.
+The jittered dot plot reveals a clear downward pattern accompanied by substantial individual overlap. Respondents with lower Extraversion scores are concentrated more heavily in the "accurate" categories (**Slightly accurate** through **Very accurate**), whereas respondents with higher Extraversion scores cluster more densely in **Very inaccurate** and **Moderately inaccurate**. Because the outcome consists of six discrete, ordered labels rather than an interval-scaled measurement, the psychological spacing between adjacent options is not equal. Fitting an ordinary linear regression could produce a single point prediction such as "3.4" or even values outside 1–6, so an appropriate model should instead estimate a valid probability for each of the six categories that sums to 1.
 
 ## An unordered outcome
 
 Each person's **dominant trait** (their highest of the five subscale scores) is a set of categories with **no built-in order**. Being highest on Openness is not "more" than being highest on Agreeableness. An outcome like this requires a baseline-category (multinomial) model, such as `nnet::multinom()`, rather than `clm()`.
 
-Here I can see how many people have each trait as their highest.
-
 ```{r}
-#| echo: FALSE
 
 ordered_dat <- data |>
   count(highest) |>
-  mutate(highest = fct_reorder(highest, n)) # fct_reorder() sorts the bars by size
+  mutate(highest = fct_reorder(highest, n))
 
 #plot the unordered outcome
 unordered_plot <- ggplot(ordered_dat, aes(highest, n)) +
   geom_col(width = 0.65, fill = "maroon") +
   coord_flip() +
-  labs(title = "Dominant trait: five categories with no order",
+  labs(title = "Dominant trait: five categories with no order", 
        x = NULL, y = "People") +
   theme_minimal()
-```
-
-```{r}
-#| echo: FALSE
-
 unordered_plot
 ```
 
 # 2. Cumulative probabilities
 
-A cumulative probability is the probability of responding **with a specific response category (*j*)** or lower. With six categories there are five cumulative probabilities to model. This is because I am dealing with cumulative thresholds which I am converting to probabilities. Remember that cumulative thresholds are cumulative — meaning they capture the probability of a participant providing any response option OR one below it (i.e., selecting slightly inaccurate OR moderately inaccurate OR very inaccurate). That is why I have 5 cumulative probabilities and not six – the cumulative probability of the sixth category (very accurate) is 100%.
-
 ```{r, cumulative prob table}
-#| echo: FALSE
 
 obs_tab <- data |>
   count(N4) |>
   mutate(
     Probability = n / sum(n),
-    CumulativeProbability = cumsum(Probability), #cumsum() is a running total, adding each category's proportion to all the ones below it
-    #if_else() leaves the top category blank (NA), because P(above) = 0 the
-    CumulativeOdds = if_else(CumulativeProbability < 1,
+    CumulativeProbability = cumsum(Probability), 
+    CumulativeOdds = if_else(CumulativeProbability < 1, 
                              CumulativeProbability / (1 - CumulativeProbability), NA_real_),
-    Cumulative_Logodds = if_else(CumulativeProbability < 1,
-                                 qlogis(CumulativeProbability), NA_real_)   # qlogis() turns a probability into log-odds
-
+    Cumulative_Logodds = if_else(CumulativeProbability < 1, 
+                                 qlogis(CumulativeProbability), NA_real_)
   )
 
-# create a clean table with gt
 obs_tab |>
   gt() |>
   cols_label(
@@ -214,13 +184,15 @@ obs_tab |>
     CumulativeOdds = "Odds of ≤ j",
     Cumulative_Logodds = "Log-odds of ≤ j"
   ) |>
+  fmt_integer(columns = n) |>
   fmt_number(columns = c(Probability, CumulativeProbability), decimals = 3) |>
   fmt_number(columns = c(CumulativeOdds, Cumulative_Logodds), decimals = 2) |>
   sub_missing(missing_text = "—")
-
 ```
 
-Each cumulative probability splits the scale in two, as at or below *j* versus above *j*.This becomes a binary outcome which I can easily model using logit as my link function. The ordinal model does this at every threshold point at once, and the order of the categories is built in.
+A cumulative probability P(Y \le j) is the probability of selecting category j or any category below it, which splits the six-point scale into a binary cutoff (at or below j versus above j). With six ordered categories, there are only **five** cumulative probabilities to model because the cumulative probability for the final category (**Very accurate**) is always fixed at P(Y \le 6) = 1 (100% of respondents fall at or below the top option) and therefore cannot vary with predictors. Furthermore, because the probability of responding above the highest category is P(Y > 6) = 1 - P(Y \le 6) = 0, the cumulative odds P(Y \le 6) / P(Y > 6) = 1 / 0 involve division by zero and are mathematically undefined (making the cumulative log-odds undefined as well).
+
+An ordinal cumulative logit model is well suited to N4 because it preserves the natural order from **Very inaccurate** to **Very accurate** without assuming equal intervals between consecutive ratings. Conceptually, it treats the six observed categories as ordered slices of an underlying continuous tendency to feel blue, separated by five estimated thresholds. By modelling all five cumulative splits simultaneously on the log-odds scale, the model respects the category order, avoids impossible predictions outside the 1–6 scale, and produces coherent probabilities for every response option that always sum to 1.
 
 # 3. The model with a centred predictor
 
@@ -229,20 +201,17 @@ I **centred** Extraversion earlier, so that the thresholds describe a person of 
 When reading the `summary()` output, the **thresholds** are the points at which a response moved from one category to the next. **Coefficients** are the **slopes** which represent the effect of Extraversion on the latent logit scale.
 
 ```{r, modelling with a centred predictor}
-#| echo: FALSE
 
-# Null model: thresholds only, no predictors
+# M0: Null model (thresholds only, no predictors)
 null <- clm(N4 ~ 1, data = data)
 
-# One-predictor model
+# M1: One-predictor model
 one_pred <- clm(N4 ~ extra_c, data = data)
 
 summary(one_pred)
 ```
 
 ```{r, saving elements for inline code}
-#| echo: FALSE
-
 
 # coef() lists every estimate in the model: the 5 thresholds first, then the slope.
 coef(one_pred)
@@ -279,7 +248,6 @@ The estimated slope is beta = `r b`, so Higher Extraversion **raises** the log-o
 ## What the centred thresholds mean
 
 ```{r}
-#| echo: FALSE
 
 # plogis() turns a log-odds into a probability. 
 
@@ -298,7 +266,6 @@ tibble(
   fmt_number(columns = theta, decimals = 2) |>
   fmt_number(columns = c(cum, cat_p), decimals = 2) |>
   sub_missing(missing_text = "—")
-
 ```
 
 Apply `plogis()` to each threshold to get a cumulative probability, then take differences. For a person of average Extraversion, the most likely response is *`r n_levels[which.max(cat_p)]`* (`r max(cat_p)`). Their probability of endorsing the item at all, that is, *Slightly accurate* or lower, is the probability of *Slightly accurate* at 79%. 
@@ -308,7 +275,6 @@ Apply `plogis()` to each threshold to get a cumulative probability, then take di
 The null model has thresholds only. With no predictors, its thresholds reproduce the observed cumulative log-odds from Section 2 exactly:
 
 ```{r}
-#| echo: FALSE
 
 # View thresholds produced, and how they are the same as the cumulative log-odds
 coef(null)
@@ -320,7 +286,6 @@ This is a useful sanity check: it shows the thresholds are just cumulative log-o
 Now I compare the two nested models with a likelihood ratio test (LRT) and AIC:
 
 ```{r, LRT}
-#| echo: FALSE
 
 # anova() on two clm models gives an LRT
 lrt <- anova(null, one_pred)
@@ -330,7 +295,6 @@ lrt
 Adding Extraversion improves fit substantially.
 
 ```{r, AIC}
-#| echo: FALSE
 
 # logLik() and AIC() pull the fit statistics from each model.
 # length(coef(...)) counts the estimated parameters.
@@ -350,7 +314,6 @@ AIC agrees with the likelihood ratio test: the Extraversion model is preferred b
 ## 4b. Comparing and interpreting the chosen model
 
 ```{r, lrt aic values for inline coding}
-#| echo: FALSE
 
 # The LRT table has one row per model; row 2 holds the test results.
 # $ pulls out a column by name.
@@ -369,14 +332,9 @@ The model assumes one shared slope across all five threshold `nominal_test()` re
 `nominal_test()` checks it by fitting a second model in which Extraversion gets a separate slope at each threshold: a different push at each gap. A likelihood ratio test then compares the two models. If giving Extraversion five pushes doesn’t fit significantly better than one, the shared slope is enough and the proportional odds assumption holds.
 
 ```{r, nominal test}
-#| echo: FALSE
 
 nt <- nominal_test(one_pred)
 nt
-```
-
-```{r, nominal values for inline}
-#| echo: FALSE
 
 # nt is a table: pick out [row, column] by name
 
@@ -385,34 +343,17 @@ nt_df <- nt["extra_c", "Df"]
 nt_p <- nt["extra_c", "Pr(>Chi)"]
 ```
 
-The test is **not** significant. The data are consistent with a single shared slope, so the proportional-odds model is retained.
+Because the nominal test is non-significant (p `r fmt_p(nt_p)`), the proportional odds assumption is supported for Extraversion. Allowing five separate threshold-specific slopes does not improve model fit significantly over a single shared slope. Therefore, a partial proportional odds model is not needed to replace M1, and M1 is retained as the primary model.
 
-If this test was significant, I should use a partial proportional-odds model as seen below, and report this alongside the main model.
+Below, the unconstrained nominal model (`m_nom`) is fit solely to extract the five threshold-specific odds ratios and 95% confidence intervals for the diagnostic coefficient plot (flipping the sign of each nominal coefficient before exponentiating so every odds ratio describes responding above the threshold).
 
 ```{r, nominal fit model}
-#| echo: FALSE
 
-#fit this model
 m_nom <- clm(N4 ~ 1, nominal = ~ extra_c, data = data)
-
-#compare the two models to see which has superior fit (commented out for now)
-#anova(one_pred, m_nom)
-```
-
-```{r, nominal coefficients for inline}
-#| echo: FALSE
-
-# Look at the estimates: the first 5 are the thresholds,
-# and estimates 6 to 10 are the five Extraversion slopes (one per threshold).
+anova(one_pred, m_nom)
 coef(m_nom)
-
-# The five threshold-specific slopes
-nom_est <- coef(m_nom)[6:10]
-
-# Their standard errors. vcov() gives the variance-covariance matrix of the
-# estimates; diag() takes its diagonal (the variances), and sqrt() turns
-# variances into standard errors.
-nom_se <- sqrt(diag(vcov(m_nom)))[6:10]
+nom_est <- coef(m_nom)
+nom_se <- sqrt(diag(vcov(m_nom)))
 
 threshold_or <- tibble(
   Threshold = c("Very inaccurate | Moderately inaccurate",
@@ -428,23 +369,22 @@ threshold_or <- tibble(
 )
 ```
 
-If my model required nominal effects, I would report the threshold-specific odds ratios and their confidence intervals.
-
 # 6. Interpreting the coefficient by changing odds ratios to probabilities
 
 ```{r, interpret odds ratio}
-#| echo: false
 
 or_tab <- tidy(one_pred, conf.int = TRUE, exponentiate = TRUE) |>
   filter(coef.type == "location")
+or_est  <- or_tab$estimate
+or_low  <- or_tab$conf.low
+or_high <- or_tab$conf.high
+or_p    <- or_tab$p.value
+pct_dec <- 100 * (1 - or_est)
 ```
 
 **Extraversion:** e\^beta = `r or_tab$estimate`, 95% CI \[`r or_tab$conf.low`, `r or_tab$conf.high`\], p `r or_tab$p.value`. Each one-point increase in Extraversion multiplies the odds of responding **above any threshold** (for example, "Slightly accurate or higher" versus lower) by `r or_tab$estimate`. That is a **`r round(100 * (1 - or_tab$estimate))`% decrease** in those odds.
 
-An odds ratio is not a change in the number of categories, and it is not a ratio of probabilities. The table below translates it into probabilities. It uses the threshold between *Slightly inaccurate* and *Slightly accurate*, so it shows the probability of endorsing the item at all:
-
 ```{r, converting the OR to probabilities}
-#| echo: FALSE
 
 # I use the threshold between "Slightly inaccurate" and "Slightly accurate",
 # which is the 3rd threshold: th[3].
@@ -454,9 +394,9 @@ An odds ratio is not a change in the number of categories, and it is not a ratio
 #   log-odds = threshold - slope * extra_c
 
 # Extraversion = 3
-logodds_3 <- th[3] - b * (3 - extra_bar)   # log-odds of at or below
-prob_3    <- 1 - plogis(logodds_3)         # plogis() -> probability; 1 - it = P(above)
-odds_3    <- prob_3 / (1 - prob_3)         # odds of being above
+logodds_3 <- th[3] - b * (3 - extra_bar)
+prob_3    <- 1 - plogis(logodds_3)
+odds_3    <- prob_3 / (1 - prob_3)
 
 # Extraversion = 4
 logodds_4 <- th[3] - b * (4 - extra_bar)
@@ -492,14 +432,12 @@ Each one-point step multiplies the odds by `r prob_tab$Odds[2] / prob_tab$Odds[1
 ## 7a. Predicted category probabilities
 
 ```{r, pred}
-#| echo: FALSE
 
 # ggpredict() returns one row per Extraversion value x response category.
 pred <- ggpredict(one_pred, terms = "extra_c [all]")
 ```
 
 ```{r, stacked plot}
-#| echo: FALSE
 
 pred |>
   as.data.frame() |>
@@ -524,7 +462,6 @@ At low Extraversion, much of the probability sits in the "accurate" categories. 
 The plot shows the shared proportional-odds OR alongside the threshold-specific ORs from Section 5, so it also works as a visual check of proportional odds.
 
 ```{r, OR plot}
-#| echo: FALSE
 
 bind_rows(
   tibble(Threshold = "Shared (proportional odds)", OR = or_tab$estimate,
